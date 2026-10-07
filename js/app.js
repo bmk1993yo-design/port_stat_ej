@@ -25,6 +25,12 @@ function go(n) {
   renderers[current] && renderers[current]();
   $("main").scrollTop = 0;
 }
+// 창 크기가 바뀌면(전체 화면 전환 등) 현재 단계의 그래프를 새 크기로 다시 그린다
+let resizeTimer;
+addEventListener("resize", () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => renderers[current] && renderers[current](), 100);
+});
 $$("#steps button").forEach((b) => (b.onclick = () => go(+b.dataset.step)));
 $("#prev").onclick = () => go(current - 1);
 $("#next").onclick = () => go(current + 1);
@@ -48,21 +54,24 @@ $$("#vote button").forEach((b) => (b.onclick = () => {
 /* ---------- 1. 위험 진단 ---------- */
 const RISK_KEYS = ["A", "B", "C", "D"];
 $("#all-table").innerHTML = shopTable(entries(RISK_KEYS));
-let ranking = [];
+let ranking = [], revealed = false;
+const RISK_ORDER = [...RISK_KEYS].sort((a, b) => Stats.sd(SHOPS[b].returns) - Stats.sd(SHOPS[a].returns));
+renderers[1] = () => (revealed ? Charts.sdBars($("#sd-bars"), RISK_ORDER) : Charts.prep($("#sd-bars")));
 function renderRank() {
   $("#rank-pick").innerHTML = RISK_KEYS.map((k) =>
     `<button data-k="${k}" ${ranking.includes(k) ? "disabled" : ""}>${SHOPS[k].emoji} ${SHOPS[k].name}</button>`).join("");
   $$("#rank-pick button").forEach((b) => (b.onclick = () => { ranking.push(b.dataset.k); renderRank(); }));
   $("#rank-list").innerHTML = ranking.map((k, i) => `<li><b>${i + 1}위</b>${SHOPS[k].emoji} ${SHOPS[k].name}</li>`).join("");
   $("#rank-check").disabled = ranking.length !== RISK_KEYS.length;
+  $("#rank-pick").hidden = ranking.length === RISK_KEYS.length; // 다 고르면 버튼 줄을 접어 공간 확보
 }
 $("#rank-reset").onclick = () => { ranking = []; renderRank(); };
 $("#rank-check").onclick = () => {
-  const truth = [...RISK_KEYS].sort((a, b) => Stats.sd(SHOPS[b].returns) - Stats.sd(SHOPS[a].returns));
-  const hits = ranking.filter((k, i) => k === truth[i]).length;
+  const hits = ranking.filter((k, i) => k === RISK_ORDER[i]).length;
+  revealed = true;
   $("#sd-placeholder").hidden = true;
   $("#rank-reflect").hidden = false;
-  Charts.sdBars($("#sd-bars"), truth);
+  renderers[1]();
   log.rank = `${ranking.map((k) => SHOPS[k].name).join(" > ")} (${hits}/4 일치)`;
   say($("#rank-msg"), hits === 4
     ? "🎉 4곳 모두 맞혔어요! 수익률이 평균에서 멀리 흩어진 가게일수록 표준편차가 커요."

@@ -55,13 +55,16 @@
           <div class="table-wrap"><table class="data" id="all-table"></table></div>
           <details class="recall">
             <summary>📘 다시 보기: 분산과 표준편차</summary>
-            <p>편차 = 변량 − 평균 · 분산 = (편차)²의 평균 · 표준편차 = √분산<br />
-               표준편차가 클수록 자료가 평균에서 멀리 흩어져 있다 → 수익을 <b>예측하기 어렵다(위험이 크다)</b>.</p>
+            <div class="recall-body">
+              <p class="formulas">편차 = 변량 − 평균<br />
+                 분산 = (편차)²의 평균<br />
+                 표준편차 = √분산</p>
+              <p>표준편차가 클수록 자료가 평균에서 멀리 흩어져 있다 → 수익을 <b>예측하기 어렵다(위험이 크다)</b>.</p>
+            </div>
           </details>
           <div class="task">
-            <h3>예측</h3>
-            <p>표준편차가 <b>큰 가게부터</b> 차례로 눌러 순위를 정하세요.</p>
-            <div class="choices" id="rank-pick"></div>
+            <h3>예측 — 표준편차가 <u>큰 가게부터</u> 차례로 눌러 순위를 정하세요.</h3>
+            <div class="choices compact" id="rank-pick"></div>
             <ol class="rank" id="rank-list"></ol>
             <button class="primary" id="rank-check" disabled>계산해서 확인하기</button>
             <button class="ghost" id="rank-reset">다시 고르기</button>
@@ -69,7 +72,7 @@
         </div>
         <div class="col">
           <div class="chart-box">
-            <canvas id="sd-bars" width="640" height="230" aria-label="가게별 표준편차 막대그래프"></canvas>
+            <canvas id="sd-bars" data-maxvh="36" width="640" height="230" aria-label="가게별 표준편차 막대그래프"></canvas>
             <p class="placeholder" id="sd-placeholder">예측을 마치면 표준편차가 공개됩니다.</p>
           </div>
           <p class="feedback" id="rank-msg" aria-live="polite"></p>
@@ -95,7 +98,7 @@
         </div>
         <div class="col">
           <div class="chart-box">
-            <canvas id="my-line" width="640" height="200" aria-label="나만의 가게 수익률 수직선"></canvas>
+            <canvas id="my-line" data-maxvh="32" width="640" height="200" aria-label="나만의 가게 수익률 수직선"></canvas>
           </div>
           <p class="note">초록 띠: 평균 ± 표준편차 범위</p>
           <div class="task">
@@ -121,7 +124,7 @@
         <div class="col">
           <div class="choices tabs" id="scatter-tabs"></div>
           <div class="chart-box">
-            <canvas id="pair-scatter" width="440" height="360" aria-label="아이스크림 가게와 짝꿍 가게의 산점도"></canvas>
+            <canvas id="pair-scatter" data-maxvh="46" width="440" height="360" aria-label="아이스크림 가게와 짝꿍 가게의 산점도"></canvas>
             <p class="placeholder" id="scatter-placeholder">예측 ①을 모두 고른 뒤 확인하면 산점도가 나타납니다.</p>
           </div>
           <div class="task">
@@ -152,8 +155,8 @@
         </div>
         <div class="col">
           <div class="chart-row">
-            <div class="chart-box"><canvas id="mix-bars" width="300" height="250" aria-label="날씨별 바구니 수익률"></canvas></div>
-            <div class="chart-box"><canvas id="risk-return" width="350" height="250" aria-label="위험-수익 그래프"></canvas></div>
+            <div class="chart-box"><canvas id="mix-bars" data-maxvh="40" width="300" height="250" aria-label="날씨별 바구니 수익률"></canvas></div>
+            <div class="chart-box"><canvas id="risk-return" data-maxvh="40" width="350" height="250" aria-label="위험-수익 그래프"></canvas></div>
           </div>
           <p class="note">오른쪽 그래프의 선: 🍦 비율을 0%→100%로 바꿀 때 바구니가 지나가는 자리. 왼쪽 위로 갈수록 좋은 바구니예요.</p>
           <div class="task">

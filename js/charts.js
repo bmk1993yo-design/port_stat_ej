@@ -1,11 +1,29 @@
 // 라이브러리 없이 canvas로 그리는 차트 모음 (인터넷 없는 교실에서도 동작)
+// 화면 크기에 맞춰 그리기: HTML의 width/height 속성은 "기준 크기"로만 쓰고,
+// 실제 표시 크기는 담는 상자의 폭과 data-maxvh(화면 높이 대비 최대 %)로 정한다.
+// 높이를 기준으로 확대 배율을 정하고 남는 가로 폭은 그래프를 넓혀 채운다(글자·점도 같은 배율로 커짐).
 const Charts = {
   PAD: 48,
   FONT: "14px 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif",
 
+  prep(cv) {
+    if (!cv.dataset.bw) { cv.dataset.bw = cv.width; cv.dataset.bh = cv.height; }
+    cv.style.width = "0px"; // 이전 크기가 상자를 넓혀 둔 채로 측정되지 않도록
+    const bw = +cv.dataset.bw, bh = +cv.dataset.bh, box = cv.parentElement, cs = getComputedStyle(box);
+    const availW = box.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const ctx = cv.getContext("2d");
+    if (availW <= 0) { ctx.setTransform(1, 0, 0, 1, 0, 0); return { ctx, W: bw, H: bh }; } // 숨겨진 단계
+    const maxH = ((+cv.dataset.maxvh || 50) / 100) * innerHeight;
+    const dispH = Math.min((availW * bh) / bw, maxH), scale = dispH / bh, dpr = devicePixelRatio || 1;
+    cv.style.width = `${availW}px`; cv.style.height = `${dispH}px`;
+    cv.width = Math.round(availW * dpr); cv.height = Math.round(dispH * dpr);
+    ctx.setTransform(scale * dpr, 0, 0, scale * dpr, 0, 0);
+    return { ctx, W: availW / scale, H: bh };
+  },
+
   // 축과 격자를 그리고 좌표 변환 함수를 돌려준다
   axes(cv, { xMin, xMax, yMin, yMax, xLabel = "", yLabel = "", xStep, yStep }) {
-    const ctx = cv.getContext("2d"), P = Charts.PAD, W = cv.width, H = cv.height;
+    const { ctx, W, H } = Charts.prep(cv), P = Charts.PAD;
     ctx.clearRect(0, 0, W, H);
     const sx = (x) => P + ((x - xMin) / (xMax - xMin)) * (W - P * 1.4);
     const sy = (y) => H - P - ((y - yMin) / (yMax - yMin)) * (H - P * 1.4);
@@ -27,7 +45,7 @@ const Charts = {
     ctx.fillStyle = "#212529"; ctx.textAlign = "center";
     ctx.fillText(xLabel, (P + W) / 2, H - 8);
     ctx.save(); ctx.translate(14, H / 2); ctx.rotate(-Math.PI / 2); ctx.fillText(yLabel, 0, 0); ctx.restore();
-    return { ctx, sx, sy };
+    return { ctx, sx, sy, W, H };
   },
 
   dot(ctx, x, y, color, r = 7, label) {
@@ -38,7 +56,7 @@ const Charts = {
 
   // 1단계: 가게별 표준편차 가로 막대
   sdBars(cv, keys) {
-    const ctx = cv.getContext("2d"), W = cv.width, H = cv.height, L = 170, max = 18;
+    const { ctx, W, H } = Charts.prep(cv), L = 170, max = 18;
     ctx.clearRect(0, 0, W, H); ctx.font = Charts.FONT;
     const rowH = (H - 30) / keys.length;
     keys.forEach((k, i) => {
@@ -54,7 +72,7 @@ const Charts = {
 
   // 2단계: 수직선 위 세 날씨의 수익률, 평균선, 표준편차 범위
   numberLine(cv, returns, color) {
-    const ctx = cv.getContext("2d"), W = cv.width, H = cv.height, P = 40;
+    const { ctx, W, H } = Charts.prep(cv), P = 40;
     ctx.clearRect(0, 0, W, H); ctx.font = Charts.FONT;
     const lo = -40, hi = 50, sx = (x) => P + ((Math.max(lo, Math.min(hi, x)) - lo) / (hi - lo)) * (W - 2 * P);
     const y = H * 0.62, m = Stats.mean(returns), sd = Stats.sd(returns);
@@ -84,7 +102,7 @@ const Charts = {
       ctx.fillRect(x0, Math.min(sy(0), sy(v)), x1 - x0, Math.abs(sy(v) - sy(0)));
       ctx.fillStyle = "#212529"; ctx.textAlign = "center";
       ctx.fillText(`${v > 0 ? "+" : ""}${Stats.round(v)}%`, (x0 + x1) / 2, v >= 0 ? sy(v) - 6 : sy(v) + 18);
-      ctx.fillText(WEATHER_SHORT[i], (x0 + x1) / 2, cv.height - Charts.PAD + 18);
+      ctx.fillText(WEATHER_SHORT[i], (x0 + x1) / 2, g.H - Charts.PAD + 18);
     });
   },
 
