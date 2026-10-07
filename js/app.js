@@ -1,176 +1,217 @@
 // 화면 전환과 단계별 활동 연결
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
-const log = {}; // 학생 활동 기록 (저장 버튼으로 내려받기)
+const R = Stats.round;
+const pct = (x) => `${x > 0 ? "+" : ""}${R(x)}%`;
+const log = {}; // 학생 활동 기록 (내려받기용)
+
+function say(el, text, good) {
+  el.textContent = text;
+  el.classList.toggle("good", good === true);
+  el.classList.toggle("bad", good === false);
+}
 
 /* ---------- 단계 이동 ---------- */
+const STEP_COUNT = 6;
 let current = 0;
 const renderers = {};
 function go(n) {
-  current = Math.max(0, Math.min(5, n));
+  current = Math.max(0, Math.min(STEP_COUNT - 1, n));
   $$(".step").forEach((s, i) => s.classList.toggle("active", i === current));
   $$("#steps button").forEach((b, i) => b.classList.toggle("active", i === current));
+  $("#step-count").textContent = `${current + 1} / ${STEP_COUNT}`;
+  $("#prev").disabled = current === 0;
+  $("#next").disabled = current === STEP_COUNT - 1;
   renderers[current] && renderers[current]();
-  window.scrollTo(0, 0);
+  $("main").scrollTop = 0;
 }
 $$("#steps button").forEach((b) => (b.onclick = () => go(+b.dataset.step)));
 $("#prev").onclick = () => go(current - 1);
 $("#next").onclick = () => go(current + 1);
 
-// 숫자 입력 칸 + 정답 확인 (허용 오차 tol)
-function checkInput(input, answer, tol = 0.05) {
-  const ok = Math.abs(parseFloat(input.value) - answer) <= tol;
-  input.classList.toggle("ok", ok);
-  input.classList.toggle("bad", !ok && input.value !== "");
-  return ok;
+// 가게 수익률 표
+function shopTable(shops, extraHead = "", extraCell = () => "", heads = WEATHER) {
+  return `<tr><th>가게</th>${heads.map((w) => `<th>${w}</th>`).join("")}${extraHead}</tr>` +
+    shops.map(([k, s]) => `<tr><td>${s.emoji} ${s.name}</td>${s.returns
+      .map((r) => `<td class="${r < 0 ? "neg" : ""}">${pct(r)}</td>`).join("")}${extraCell(k, s)}</tr>`).join("");
 }
+const entries = (keys) => keys.map((k) => [k, SHOPS[k]]);
 
-/* ---------- 0. 이야기 ---------- */
-$("#story-table").innerHTML =
-  `<tr><th>날씨</th>${WEATHER.map((w) => `<th>${w}</th>`).join("")}</tr>` +
-  ["A", "B"].map((k) => `<tr><td>${SHOPS[k].emoji} ${SHOPS[k].name}</td>${SHOPS[k].returns
-    .map((r) => `<td class="${r < 0 ? "neg" : ""}">${r > 0 ? "+" : ""}${r}%</td>`).join("")}</tr>`).join("");
-
+/* ---------- 0. 투자 고민 ---------- */
+$("#story-table").innerHTML = shopTable(entries(["A", "B"]));
 $$("#vote button").forEach((b) => (b.onclick = () => {
   $$("#vote button").forEach((x) => x.classList.toggle("picked", x === b));
   log.vote = b.textContent;
-  $("#vote-msg").textContent = "좋아요! 이 선택이 맞는지 수학으로 확인해 봅시다. 수업 끝에 다시 돌아올 거예요.";
+  say($("#vote-msg"), "좋아요. 이 판단이 맞는지 오늘 배운 개념으로 검증해 봅시다. 마지막에 다시 돌아올 거예요.");
 }));
 
-/* ---------- 1. 평균과 편차 ---------- */
-function devTable(key) {
-  const s = SHOPS[key], m = Stats.mean(s.returns), devs = Stats.deviations(s.returns);
-  const box = $(`#dev-${key}`);
-  box.innerHTML = `<h3>${s.emoji} ${s.name}</h3>
-    <p>평균 = (${s.returns.join(" + ")}) ÷ 3 = <input class="num" data-ans="${m}"> %</p>
-    <table class="data"><tr><th>날씨</th><th>수익률</th><th>편차</th></tr>
-    ${s.returns.map((r, i) => `<tr><td>${WEATHER[i]}</td><td>${r}</td>
-      <td><input class="num" data-ans="${devs[i]}"></td></tr>`).join("")}
-    <tr><td colspan="2">편차의 합</td><td><input class="num" data-ans="0"></td></tr></table>
-    <button class="check">확인</button> <span class="hint"></span>`;
-  $(".check", box).onclick = () => {
-    const all = $$("input", box).map((i) => checkInput(i, +i.dataset.ans));
-    $(".hint", box).textContent = all.every(Boolean) ? "🎉 모두 정답!" : "빨간 칸을 다시 계산해 보세요.";
-  };
+/* ---------- 1. 위험 진단 ---------- */
+const RISK_KEYS = ["A", "B", "C", "D"];
+$("#all-table").innerHTML = shopTable(entries(RISK_KEYS));
+let ranking = [];
+function renderRank() {
+  $("#rank-pick").innerHTML = RISK_KEYS.map((k) =>
+    `<button data-k="${k}" ${ranking.includes(k) ? "disabled" : ""}>${SHOPS[k].emoji} ${SHOPS[k].name}</button>`).join("");
+  $$("#rank-pick button").forEach((b) => (b.onclick = () => { ranking.push(b.dataset.k); renderRank(); }));
+  $("#rank-list").innerHTML = ranking.map((k, i) => `<li><b>${i + 1}위</b>${SHOPS[k].emoji} ${SHOPS[k].name}</li>`).join("");
+  $("#rank-check").disabled = ranking.length !== RISK_KEYS.length;
 }
-renderers[1] = () => Charts.dotplot($("#dotplot"), [SHOPS.A, SHOPS.B]);
-devTable("A"); devTable("B");
-
-/* ---------- 2. 분산과 표준편차 ---------- */
-function varTable(key) {
-  const s = SHOPS[key], devs = Stats.deviations(s.returns);
-  const v = Stats.variance(s.returns), sd = Stats.sd(s.returns);
-  const box = $(`#var-${key}`);
-  box.innerHTML = `<h3>${s.emoji} ${s.name}</h3>
-    <table class="data"><tr><th>편차</th><th>(편차)²</th></tr>
-    ${devs.map((d) => `<tr><td>${d}</td><td><input class="num" data-ans="${d * d}"></td></tr>`).join("")}</table>
-    <p>분산 = (편차² 의 합) ÷ 3 ≈ <input class="num" data-ans="${v}" data-tol="0.1"> (소수 첫째 자리까지)</p>
-    <p>표준편차 = √분산 ≈ <input class="num" data-ans="${sd}" data-tol="0.1"> % <small>(계산기 사용 가능)</small></p>
-    <button class="check">확인</button> <span class="hint"></span>`;
-  $(".check", box).onclick = () => {
-    const all = $$("input", box).map((i) => checkInput(i, +i.dataset.ans, +(i.dataset.tol || 0.05)));
-    $(".hint", box).textContent = all.every(Boolean)
-      ? `🎉 정답! ${s.name}의 수익은 평균에서 보통 약 ${Stats.round(sd)}%p 정도 벗어나요.`
-      : "빨간 칸을 다시 확인해 보세요.";
-  };
-}
-renderers[2] = () => Charts.squares($("#squares"), [SHOPS.A, SHOPS.B]);
-varTable("A"); varTable("B");
-
-/* ---------- 3. 산점도와 상관관계 ---------- */
-const abOpt = { xMin: -25, xMax: 25, yMin: -25, yMax: 25, xStep: 10, yStep: 10,
-  xLabel: "🍦 A 수익률(%)", yLabel: "☂️ B 수익률(%)" };
-renderers[3] = () => {
-  Charts.scatter($("#scatterAB"),
-    SHOPS.A.returns.map((a, i) => [a, SHOPS.B.returns[i], "#2b8a3e", WEATHER[i].split(" ")[0]]), abOpt);
-  drawLab();
+$("#rank-reset").onclick = () => { ranking = []; renderRank(); };
+$("#rank-check").onclick = () => {
+  const truth = [...RISK_KEYS].sort((a, b) => Stats.sd(SHOPS[b].returns) - Stats.sd(SHOPS[a].returns));
+  const hits = ranking.filter((k, i) => k === truth[i]).length;
+  $("#sd-placeholder").hidden = true;
+  $("#rank-reflect").hidden = false;
+  Charts.sdBars($("#sd-bars"), truth);
+  log.rank = `${ranking.map((k) => SHOPS[k].name).join(" > ")} (${hits}/4 일치)`;
+  say($("#rank-msg"), hits === 4
+    ? "🎉 4곳 모두 맞혔어요! 수익률이 평균에서 멀리 흩어진 가게일수록 표준편차가 커요."
+    : `${hits}곳 맞혔어요. 순위가 다른 가게는 수익률이 평균에서 얼마나 떨어져 있는지 다시 비교해 보세요.`, hits === 4);
 };
-$$("#ab-corr button").forEach((b) => (b.onclick = () => {
-  $$("#ab-corr button").forEach((x) => x.classList.toggle("picked", x === b));
-  $("#ab-msg").textContent = b.dataset.v === "neg"
-    ? "🎉 맞아요! A가 오르면 B는 내려요. 오른쪽 아래로 향하는 '음의 상관관계'입니다."
-    : "다시 보세요. A가 커질 때 B는 어떻게 되나요?";
-}));
+renderRank();
 
-// 산점도 실험실: 클릭으로 점 추가/삭제
-let lab = { xLabel: "x", yLabel: "y", points: [] };
-function labRange() {
-  const xs = lab.points.map((p) => p[0]), ys = lab.points.map((p) => p[1]);
-  const pad = (a, b) => { const r = (b - a) * 0.15 || 10; return [a - r, b + r]; };
-  if (!xs.length) return { xMin: 0, xMax: 100, yMin: 0, yMax: 100 };
-  const [xMin, xMax] = pad(Math.min(...xs), Math.max(...xs));
-  const [yMin, yMax] = pad(Math.min(...ys), Math.max(...ys));
-  return { xMin, xMax, yMin, yMax };
+/* ---------- 2. 같은 평균, 다른 위험 ---------- */
+let missionIdx = 0;
+const missionDone = new Set();
+$("#missions").innerHTML = MISSIONS.map((m, i) =>
+  `<label><input type="radio" name="mission" value="${i}" ${i ? "" : "checked"}> 미션 ${i + 1}. ${m.text}</label>`).join("");
+$$("#missions input").forEach((r) => (r.onchange = () => { missionIdx = +r.value; checkMission(); }));
+$("#my-inputs").innerHTML = WEATHER.map((w, i) =>
+  `<label>${w}<input class="num" type="number" step="1" value="${[10, 5, 0][i]}" aria-label="${w} 수익률(%)"></label>`).join("") +
+  `<label>&nbsp;<span class="note" style="display:block;margin-top:10px">단위: %</span></label>`;
+$$("#my-inputs input").forEach((inp) => (inp.oninput = checkMission));
+
+function checkMission() {
+  const vals = $$("#my-inputs input").map((i) => parseFloat(i.value));
+  if (vals.some(isNaN)) return say($("#mission-msg"), "세 칸을 모두 숫자로 채워 주세요.", false);
+  const m = Stats.mean(vals), sd = Stats.sd(vals), goal = MISSIONS[missionIdx];
+  Charts.numberLine($("#my-line"), vals, MIX_COLOR);
+  if (Math.abs(m - goal.mean) > 0.05) {
+    return say($("#mission-msg"), `평균이 ${R(m)}%예요. 먼저 평균을 ${goal.mean}%로 맞춰 보세요.`, false);
+  }
+  if (sd >= goal.sdMin && sd <= goal.sdMax) {
+    missionDone.add(missionIdx);
+    $$("#missions label")[missionIdx].classList.add("done");
+    log.missions = `${missionDone.size}/${MISSIONS.length} 성공`;
+    return say($("#mission-msg"), `🎉 미션 ${missionIdx + 1} 성공! (표준편차 ${R(sd)}%)`, true);
+  }
+  say($("#mission-msg"), `평균은 맞았어요. 표준편차가 ${R(sd)}%예요. 수익률을 평균에서 ${sd < goal.sdMin ? "더 멀리" : "더 가까이"} 옮겨 보세요.`, false);
 }
-let labRangeFixed = null, labG = null;
-function drawLab() {
-  const range = labRangeFixed || labRange();
-  labG = Charts.scatter($("#lab"), lab.points, { ...range, xLabel: lab.xLabel, yLabel: lab.yLabel });
-  const n = lab.points.length, needle = $("#r-needle");
-  if (n < 3) { needle.style.left = "50%"; $("#lab-msg").textContent = "점을 3개 이상 찍어 보세요."; return; }
-  const r = Stats.corr(lab.points.map((p) => p[0]), lab.points.map((p) => p[1]));
-  needle.style.left = `${(r + 1) * 50}%`;
-  const kind = r > 0.3 ? "양의 상관관계 ↗ (x가 커지면 y도 커지는 경향)"
-    : r < -0.3 ? "음의 상관관계 ↘ (x가 커지면 y는 작아지는 경향)"
-    : "상관관계가 거의 없음 (뚜렷한 경향이 없음)";
-  $("#lab-msg").textContent = `점 ${n}개 → ${kind}`;
-}
-$$("#presets button").forEach((b) => (b.onclick = () => {
-  const p = PRESETS[b.dataset.p];
-  lab = p ? { ...p, points: p.points.map((x) => [...x]) } : { xLabel: "x", yLabel: "y", points: [] };
-  labRangeFixed = p ? null : { xMin: 0, xMax: 100, yMin: 0, yMax: 100 };
-  labRangeFixed = labRangeFixed || labRange(); // 점을 찍는 동안 축이 흔들리지 않도록 고정
-  drawLab();
-}));
-$("#lab").onclick = (e) => {
-  const cv = e.target, rect = cv.getBoundingClientRect();
-  const px = (e.clientX - rect.left) * (cv.width / rect.width), py = (e.clientY - rect.top) * (cv.height / rect.height);
-  if (!labRangeFixed) labRangeFixed = labRange();
-  const hit = lab.points.findIndex((p) => Math.hypot(labG.sx(p[0]) - px, labG.sy(p[1]) - py) < 9);
-  if (hit >= 0) lab.points.splice(hit, 1);
-  else lab.points.push(labG.inv(px, py).map((v) => Stats.round(v)));
-  drawLab();
+renderers[2] = checkMission;
+
+/* ---------- 3. 짝꿍 찾기 ---------- */
+const CORR_LABEL = { pos: "양의 상관", neg: "음의 상관", none: "상관없음" };
+const corrType = (k) => {
+  const r = Stats.corr(SHOPS.A.returns, SHOPS[k].returns);
+  return r > 0.3 ? "pos" : r < -0.3 ? "neg" : "none";
 };
+$("#partner-table").innerHTML = shopTable(entries(PARTNERS), "<th>내 예측</th><th></th>", (k) =>
+  `<td><select data-k="${k}" aria-label="${SHOPS[k].name} 상관관계 예측"><option value="">선택</option>${
+    Object.entries(CORR_LABEL).map(([v, t]) => `<option value="${v}">${t}</option>`).join("")}</select></td><td class="mark" data-k="${k}"></td>`, WEATHER_SHORT);
+$("#partner-table").insertAdjacentHTML("afterbegin", `<caption class="note" style="caption-side:top;text-align:left">기준: 🍦 아이스크림 가게 ${SHOPS.A.returns.map(pct).join(" / ")}</caption>`);
 
-/* ---------- 4. 섞어 담기 ---------- */
+let scatterPartner = PARTNERS[0], corrChecked = false;
+$("#corr-check").onclick = () => {
+  const picks = $$("#partner-table select");
+  if (picks.some((s) => !s.value)) return say($("#corr-msg"), "세 가게의 예측을 모두 골라 주세요.", false);
+  let hits = 0;
+  picks.forEach((s) => {
+    const ok = s.value === corrType(s.dataset.k);
+    hits += ok;
+    $(`.mark[data-k="${s.dataset.k}"]`).innerHTML = ok ? `<span class="ok">✓</span>` : `<span class="no">✗</span><br><small>${CORR_LABEL[corrType(s.dataset.k)]}</small>`;
+  });
+  corrChecked = true;
+  log.corr = `${hits}/3 일치`;
+  $("#scatter-placeholder").hidden = true;
+  drawPair();
+  say($("#corr-msg"), hits === 3 ? "🎉 모두 맞혔어요! 오른쪽에서 산점도를 하나씩 확인해 보세요." : `${hits}개 맞혔어요. 오른쪽 산점도로 이유를 찾아보세요.`, hits === 3);
+};
+$("#scatter-tabs").innerHTML = PARTNERS.map((k) => `<button data-k="${k}">${SHOPS[k].emoji} ${SHOPS[k].name}</button>`).join("");
+$$("#scatter-tabs button").forEach((b) => (b.onclick = () => { scatterPartner = b.dataset.k; drawPair(); }));
+function drawPair() {
+  const P = SHOPS[scatterPartner];
+  $$("#scatter-tabs button").forEach((b) => {
+    const on = b.dataset.k === scatterPartner;
+    b.classList.toggle("picked", on);
+    b.style.background = on ? SHOPS[b.dataset.k].color : "";
+  });
+  if (!corrChecked) { Charts.axes($("#pair-scatter"), { xMin: -25, xMax: 25, yMin: -25, yMax: 25, xStep: 10, yStep: 10 }); return; }
+  Charts.scatter($("#pair-scatter"),
+    SHOPS.A.returns.map((a, i) => [a, P.returns[i], P.color, WEATHER_SHORT[i]]),
+    { xMin: -25, xMax: 25, yMin: -25, yMax: 25, xStep: 10, yStep: 10,
+      xLabel: `🍦 아이스크림 가게 수익률(%)`, yLabel: `${P.emoji} ${P.name} 수익률(%)` });
+}
+renderers[3] = drawPair;
+
+$("#best-pick").innerHTML = PARTNERS.map((k) => `<button data-k="${k}">${SHOPS[k].emoji} ${SHOPS[k].name}</button>`).join("");
+$$("#best-pick button").forEach((b) => (b.onclick = () => {
+  $$("#best-pick button").forEach((x) => x.classList.toggle("picked", x === b));
+  log.best = SHOPS[b.dataset.k].name;
+}));
+
+/* ---------- 4. 바구니 설계 챌린지 ---------- */
+const records = [];
+$("#partner").innerHTML = PARTNERS.map((k) => `<option value="${k}">${SHOPS[k].emoji} ${SHOPS[k].name}</option>`).join("");
+function basket() {
+  const w = +$("#wA").value / 100, k = $("#partner").value, mix = Stats.mix(SHOPS.A.returns, SHOPS[k].returns, w);
+  return { w, k, mix, mean: Stats.mean(mix), sd: Stats.sd(mix) };
+}
 function renderMix() {
-  const w = +$("#wA").value / 100, P = SHOPS[$("#partner").value], A = SHOPS.A;
-  $("#wA-label").textContent = `${Math.round(w * 100)}% / ${P.emoji} ${Math.round((1 - w) * 100)}%`;
-  const mix = Stats.mix(A.returns, P.returns, w);
-  Charts.bars($("#mixbars"), mix, WEATHER.map((x) => x.split(" ")[0]), "#2b8a3e");
-  Charts.riskCurve($("#riskcurve"), A.returns, P.returns, w, P.color);
-  const row = (label, xs) => `<tr><td>${label}</td><td>${Stats.round(Stats.mean(xs))}%</td><td>${Stats.round(Stats.sd(xs))}%</td></tr>`;
-  $("#mix-stats").innerHTML = `<table class="data"><tr><th></th><th>평균 수익률</th><th>표준편차(위험)</th></tr>
-    ${row(`${A.emoji} A만`, A.returns)}${row(`${P.emoji} ${P.name}만`, P.returns)}
-    <tr class="hl">${row("🧺 섞은 바구니", mix).slice(4)}</table>`;
+  const b = basket(), P = SHOPS[b.k], ok = b.mean >= CHALLENGE.minMean - 1e-9;
+  $("#wA-label").textContent = `${Math.round(b.w * 100)}%  ·  ${P.emoji} ${Math.round((1 - b.w) * 100)}%`;
+  $("#mix-stats").innerHTML = `<div class="stat-line">
+    <span>평균 <b>${R(b.mean)}%</b></span><span>표준편차 <b>${R(b.sd)}%</b></span>
+    <span class="${ok ? "ok" : "no"}">${ok ? "✓ 조건 만족" : "✗ 평균 3% 미만"}</span></div>`;
+  Charts.bars($("#mix-bars"), b.mix);
+  Charts.riskReturn($("#risk-return"), SHOPS.A.returns, P.returns, b.w, P.color, records.filter((r) => r.k === b.k));
 }
+function renderRecords() {
+  const valid = records.filter((r) => r.ok);
+  const best = valid.length ? valid.reduce((a, b) => (b.sd < a.sd ? b : a)) : null;
+  $("#records").innerHTML = `<tr><th>바구니</th><th>평균</th><th>표준편차</th><th>조건</th></tr>` +
+    records.map((r) => `<tr class="${r === best ? "best" : ""}"><td>🍦 ${r.wA}% + ${SHOPS[r.k].emoji} ${100 - r.wA}%${r === best ? " 🏆" : ""}</td>
+      <td>${R(r.mean)}%</td><td>${R(r.sd)}%</td><td>${r.ok ? "✓" : "✗"}</td></tr>`).join("");
+  log.best4 = best ? `🍦 ${best.wA}% + ${SHOPS[best.k].name} ${100 - best.wA}% (평균 ${R(best.mean)}%, 표준편차 ${R(best.sd)}%)` : "-";
+}
+$("#record-btn").onclick = () => {
+  const b = basket(), wA = Math.round(b.w * 100);
+  if (records.some((r) => r.k === b.k && r.wA === wA)) return;
+  records.push({ k: b.k, wA, mean: b.mean, sd: b.sd, ok: b.mean >= CHALLENGE.minMean - 1e-9 });
+  renderRecords(); renderMix();
+};
 $("#wA").oninput = renderMix;
 $("#partner").onchange = renderMix;
 renderers[4] = renderMix;
+renderRecords();
 
-/* ---------- 5. 정리 ---------- */
-$("#quiz").innerHTML = QUIZ.map((item, qi) => `<div class="quiz-item"><p>Q${qi + 1}. ${item.q}</p>
-  <div class="choices small">${item.options.map((o, oi) => `<button data-q="${qi}" data-o="${oi}">${o}</button>`).join("")}</div></div>`).join("");
+/* ---------- 5. 적용과 한계 ---------- */
+$("#apply-table").innerHTML = shopTable([["A", SHOPS.A], ["X", APPLY.shop]]);
+$("#quiz").innerHTML = APPLY.questions.map((item, qi) => `<div class="quiz-item"><p>Q${qi + 1}. ${item.q}</p>
+  <div class="choices">${item.options.map((o, oi) => `<button data-q="${qi}" data-o="${oi}">${o}</button>`).join("")}</div></div>`).join("");
 const answers = {};
 $$("#quiz button").forEach((b) => (b.onclick = () => {
-  const q = +b.dataset.q, ok = +b.dataset.o === QUIZ[q].answer;
+  const q = +b.dataset.q, ok = +b.dataset.o === APPLY.questions[q].answer;
   $$(`#quiz button[data-q="${q}"]`).forEach((x) => x.classList.remove("right", "wrong"));
   b.classList.add(ok ? "right" : "wrong");
   answers[q] = ok;
   const score = Object.values(answers).filter(Boolean).length;
-  $("#quiz-score").textContent = `맞힌 문제: ${score} / ${QUIZ.length}`;
-  log.quiz = `${score} / ${QUIZ.length}`;
+  log.quiz = `${score} / ${APPLY.questions.length}`;
+  say($("#quiz-score"), `맞힌 문제: ${log.quiz}`, score === APPLY.questions.length ? true : undefined);
 }));
 
 $("#save-btn").onclick = () => {
   const text = [
-    `[처음 선택] ${log.vote || "-"}`, `[이유] ${$("#vote-reason").value}`,
-    `[섞어 담기 미션] ${$("#mission").value}`, `[퀴즈] ${log.quiz || "-"}`,
+    `[0. 첫 판단] ${log.vote || "-"}`, `    근거: ${$("#vote-reason").value}`,
+    `[1. 위험 순위 예측] ${log.rank || "-"}`, `    생각 넓히기: ${$("#reflect-1").value}`,
+    `[2. 나만의 가게 미션] ${log.missions || "0/3 성공"}`, `    규칙 찾기: ${$("#reflect-2").value}`,
+    `[3. 상관관계 예측] ${log.corr || "-"}`, `    최고의 짝꿍 예측: ${log.best || "-"} / 이유: ${$("#reflect-3").value}`,
+    `[4. 최고의 바구니] ${log.best4 || "-"}`, `    모둠 결론: ${$("#mission").value}`,
+    `[5. 적용 문제] ${log.quiz || "-"}`, `    한계 토론: ${$("#limit").value}`,
     `[출구 카드] ${$("#exit-card").value}`,
   ].join("\n");
   const a = document.createElement("a");
-  a.href = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
-  a.download = "산포도_상관관계_활동기록.txt";
+  a.href = URL.createObjectURL(new Blob([text], { type: "text/plain;charset=utf-8" }));
+  a.download = "포트폴리오_응용_활동기록.txt";
   a.click();
 };
 

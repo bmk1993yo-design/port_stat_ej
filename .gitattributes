@@ -1,0 +1,6 @@
+# 줄바꿈을 저장소에서는 LF로 통일 (macOS·Windows 공통)
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary
