@@ -16,9 +16,13 @@ js/stats.js         통계 계산
 js/charts.js        canvas 차트
 js/app.js           화면 전환·채점·기록 저장
 docs/lesson-plan.md 교사용 수업 설계
+docs/google-sheets-setup.md  활동 기록을 구글 스프레드시트로 받는 설정
+apps-script/Code.gs 스프레드시트에 붙이는 수신 스크립트
 ```
 
-빌드 과정이나 설치할 패키지가 없습니다. `index.html`을 브라우저로 열면 바로 실행됩니다(인터넷 불필요).
+학생이 5단계에서 **활동 기록 제출하기**를 누르면 학번·이름과 문항별 응답이 선생님 구글 스프레드시트에 저장됩니다. 처음 한 번 [docs/google-sheets-setup.md](docs/google-sheets-setup.md) 순서대로 설정하고 `js/data.js`의 `SUBMIT_URL`에 주소를 넣으세요. 주소가 비어 있으면 파일 내려받기로 대신합니다.
+
+빌드 과정이나 설치할 패키지가 없습니다. `index.html`을 브라우저로 열면 바로 실행됩니다(활동 기록 제출 외에는 인터넷 불필요).
 
 ## 처음 설정 (기기마다 한 번)
 

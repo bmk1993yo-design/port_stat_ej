@@ -153,7 +153,20 @@ input.num {
 .feedback.good { color: var(--accent); }
 .feedback.bad { color: var(--bad); }
 
-.quiz-item { background: var(--card); border: 1px solid var(--line); border-radius: 0.625rem; padding: 0.5rem 0.75rem; margin-top: 0.5rem; }
+/* 5단계 제출 */
+.submit-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.5rem 0.75rem; }
+.submit-row label { font-weight: 600; font-size: 0.95rem; }
+.submit-row input {
+  display: block; width: 6.5rem; min-height: 2.5rem; margin-top: 0.125rem; padding: 0.25rem 0.5rem;
+  font: inherit; border: 2px solid #ced4da; border-radius: 0.5rem;
+}
+.submit-row input.bad { border-color: var(--bad); background: var(--bad-soft); }
+.submit-row .primary { margin-left: auto; }
+.submit-status { display: flex; align-items: center; gap: 0.75rem; }
+.submit-status .feedback { flex: 1; min-height: 0; }
+.submit-status .ghost { flex-shrink: 0; }
+
+.quiz-item {background: var(--card); border: 1px solid var(--line); border-radius: 0.625rem; padding: 0.5rem 0.75rem; margin-top: 0.5rem; }
 .quiz-item p { margin-bottom: 0.375rem; }
 .quiz-item .choices button { min-height: 2.25rem; padding: 0.25rem 0.75rem; font-size: 0.95rem; }
 

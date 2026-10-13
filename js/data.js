@@ -1,3 +1,7 @@
+// 활동 기록을 받을 구글 스프레드시트의 Apps Script 웹 앱 주소 (설정 방법: docs/google-sheets-setup.md)
+// 비워 두면 제출 대신 파일 내려받기만 된다.
+const SUBMIT_URL = "https://script.google.com/macros/s/AKfycbwOAbDve2tI8axuJu5KGLsQygWM_bRrLAAmlp3TQxBHU5PkN2_hbByo5d-diUZWU0lb/exec";
+
 // 수업 데이터 — 내용을 바꾸면 docs/lesson-plan.md의 정답표도 함께 고칠 것
 // 세 가지 날씨가 일어날 가능성은 모두 1/3
 const WEATHER = ["☀️ 무더운 해", "⛅ 보통인 해", "🌧️ 비가 많은 해"];

@@ -43,11 +43,14 @@ css/style.css     모든 스타일
 js/data.js        가게 수익률·산점도 예시·퀴즈 — 내용 수정은 여기서만
 js/stats.js       평균·편차·분산·표준편차·상관·섞기 계산
 js/charts.js      canvas 차트 (라이브러리 없음)
-js/app.js         화면 전환, 채점, 활동 기록 저장
+js/app.js         화면 전환, 채점, 활동 기록 제출·내려받기
+apps-script/Code.gs  교사 스프레드시트에 붙이는 수신 스크립트 (웹 앱으로 배포)
 ```
 
 - 빌드 도구·프레임워크·npm 의존성 없음. 순수 HTML/CSS/JS, `<script>`는 일반 스크립트(ES 모듈 아님 — `file://`로 열어도 동작해야 함).
-- 학생 입력을 `innerHTML`로 출력하지 않는다. 학생 데이터는 서버로 보내지 않는다(저장은 텍스트 파일 다운로드만).
+- 학생 입력을 `innerHTML`로 출력하지 않는다.
+- 학생 데이터는 5단계 "활동 기록 제출하기"로만 밖으로 나간다: `js/data.js`의 `SUBMIT_URL`(교사 구글 스프레드시트의 Apps Script 웹 앱, [apps-script/Code.gs](apps-script/Code.gs))로 학번·이름·문항별 응답을 POST한다. 다른 곳으로 보내는 코드를 추가하지 않는다. 제출 실패·주소 미설정 시에는 텍스트 파일 내려받기로 대신한다. 설정 방법: [docs/google-sheets-setup.md](docs/google-sheets-setup.md).
+- 문항 구성(`REPORT`, `APPLY.questions`)을 바꾸면 시트 열 제목과 어긋나므로, 교사에게 새 시트가 필요하다고 알린다.
 - 수치를 바꾸면 docs/lesson-plan.md의 정답표도 같이 고친다. 핵심 값: 🍦 평균 5·표준편차 10.6, ☂️ 평균 1·표준편차 16.4, 4단계 최적 🍦60:☂️40 → 평균 3.4·표준편차 0.6.
 
 ## 확인 방법

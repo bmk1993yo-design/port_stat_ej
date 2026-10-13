@@ -243,34 +243,23 @@ $$("#quiz button").forEach((b) => (b.onclick = () => {
   say($("#quiz-score"), `맞힌 문제: ${log.quiz}`, score === APPLY.questions.length ? true : undefined);
 }));
 
-/* ---------- 활동 기록 내려받기 ---------- */
-// 문항마다 질문·의미·평가 요소·정답(기준)과 학생 응답을 함께 적어, 교사가 파일만 보고도 알아볼 수 있게 한다
+/* ---------- 활동 기록: 제출(구글 스프레드시트) / 내려받기 ---------- */
+// 문항마다 질문·의미·평가 요소·정답(기준)과 학생 응답을 함께 모아, 교사가 결과만 보고도 알아볼 수 있게 한다
 const NONE = "(응답 없음)";
 const val = (sel) => $(sel).value.trim() || NONE;
-const pctList = (xs) => xs.map(pct).join(", ");
 
-function reportBlock(meta, responseLines) {
-  return [
-    "────────────────────────────────────────",
-    `[${meta.no}] ${meta.title}`,
-    `  ■ 질문: ${meta.question}`,
-    `  ■ 의미: ${meta.meaning}`,
-    `  ■ 평가 요소: ${meta.assess}`,
-    `  ■ 정답·기준: ${meta.key}`,
-    "  ▶ 내 응답",
-    ...responseLines.map((l) => `     ${l}`),
-  ].join("\n");
-}
+// 문항 목록: [{ no, title, question, meaning, assess, key, response }] 와 한 줄 요약
+function collectItems() {
+  const items = [];
+  const add = (meta, lines) => items.push({ ...meta, response: lines.join("\n") });
 
-function buildReport() {
-  const blocks = [];
-  blocks.push(reportBlock(REPORT.vote, [`선택: ${log.vote || NONE}`, `근거: ${val("#vote-reason")}`]));
+  add(REPORT.vote, [`선택: ${log.vote || NONE}`, `근거: ${val("#vote-reason")}`]);
 
   const hits = ranking.length === RISK_KEYS.length ? ranking.filter((k, i) => k === RISK_ORDER[i]).length : null;
-  blocks.push(reportBlock(REPORT.rank, ranking.length
+  add(REPORT.rank, ranking.length
     ? [`내 순위: ${ranking.map((k, i) => `${i + 1}위 ${SHOPS[k].name}`).join(" > ")}`,
        revealed ? `결과: ${hits}/4곳 일치` : "결과: 아직 확인하지 않음"]
-    : [NONE]));
+    : [NONE]);
 
   const c = { right: 0, total: RISK_KEYS.length * 2 };
   const calcLines = RISK_KEYS.map((k) => {
@@ -283,57 +272,109 @@ function buildReport() {
     };
     return `${SHOPS[k].emoji} ${SHOPS[k].name}: ${cell("v")}, ${cell("s")}`;
   });
-  blocks.push(reportBlock(REPORT.calc, [...calcLines, `결과: ${c.right}/${c.total}칸 정답`]));
-  blocks.push(reportBlock(REPORT.reflect1, [val("#reflect-1")]));
+  add(REPORT.calc, [...calcLines, `결과: ${c.right}/${c.total}칸 정답`]);
+  add(REPORT.reflect1, [val("#reflect-1")]);
 
-  blocks.push(reportBlock(REPORT.missions, MISSIONS.map((m, i) => missionValues[i]
+  add(REPORT.missions, MISSIONS.map((m, i) => missionValues[i]
     ? `미션 ${i + 1} ✓ 성공 — 무더운 해 ${pct(missionValues[i].vals[0])}, 보통인 해 ${pct(missionValues[i].vals[1])}, 비가 많은 해 ${pct(missionValues[i].vals[2])} (표준편차 ${R(missionValues[i].sd)}%)`
-    : `미션 ${i + 1} 미완료 (${m.text})`).concat(`결과: ${missionDone.size}/${MISSIONS.length} 성공`)));
-  blocks.push(reportBlock(REPORT.reflect2, [val("#reflect-2")]));
+    : `미션 ${i + 1} 미완료 (${m.text})`).concat(`결과: ${missionDone.size}/${MISSIONS.length} 성공`));
+  add(REPORT.reflect2, [val("#reflect-2")]);
 
-  blocks.push(reportBlock(REPORT.corr, $$("#partner-table select").map((s) => {
+  add(REPORT.corr, $$("#partner-table select").map((s) => {
     const k = s.dataset.k, mine = s.value ? CORR_LABEL[s.value] : "(선택 안 함)";
     return `${SHOPS[k].emoji} ${SHOPS[k].name}: ${mine}${s.value ? (s.value === corrType(k) ? " ✓" : ` ✗(정답 ${CORR_LABEL[corrType(k)]})`) : ""}`;
-  }).concat(corrChecked ? [`결과: ${log.corr}`] : ["결과: 아직 확인하지 않음"])));
-  blocks.push(reportBlock(REPORT.best, [`예측: ${log.best || NONE}`, `이유: ${val("#reflect-3")}`]));
+  }).concat(corrChecked ? [`결과: ${log.corr}`] : ["결과: 아직 확인하지 않음"]));
+  add(REPORT.best, [`예측: ${log.best || NONE}`, `이유: ${val("#reflect-3")}`]);
 
-  blocks.push(reportBlock(REPORT.basket, records.length
+  add(REPORT.basket, records.length
     ? records.map((r) => `🍦 ${r.wA}% + ${SHOPS[r.k].name} ${100 - r.wA}% → 평균 ${R(r.mean)}%, 표준편차 ${R(r.sd)}% ${r.ok ? "(조건 만족)" : "(평균 3% 미만)"}`)
         .concat(`내가 찾은 최고의 바구니: ${log.best4 || "-"}`)
-    : ["기록한 바구니 없음"]));
-  blocks.push(reportBlock(REPORT.conclusion, [val("#mission")]));
+    : ["기록한 바구니 없음"]);
+  add(REPORT.conclusion, [val("#mission")]);
 
   APPLY.questions.forEach((item, qi) => {
     const pick = quizChoice[qi];
-    blocks.push(reportBlock({
-      no: `5-${"①②③④"[qi]}`, title: "적용 문제", question: item.q, meaning: item.meaning, assess: item.assess,
-      key: item.options[item.answer],
-    }, [pick === undefined ? NONE : `선택: ${item.options[pick]} ${pick === item.answer ? "✓" : "✗"}`]));
+    add({ no: `5-${"①②③④"[qi]}`, title: "적용 문제", question: item.q, meaning: item.meaning, assess: item.assess,
+      key: item.options[item.answer] },
+    [pick === undefined ? NONE : `선택: ${item.options[pick]} ${pick === item.answer ? "✓" : "✗"}`]);
   });
-  blocks.push(reportBlock(REPORT.limit, [val("#limit")]));
-  blocks.push(reportBlock(REPORT.exit, [val("#exit-card")]));
+  add(REPORT.limit, [val("#limit")]);
+  add(REPORT.exit, [val("#exit-card")]);
 
-  const now = new Date();
+  const summary = `위험 순위 예측 ${hits === null || !revealed ? "-" : `${hits}/4`} · 분산·표준편차 계산 ${c.right}/${c.total}`
+    + ` · 미션 ${missionDone.size}/${MISSIONS.length} · 상관관계 예측 ${corrChecked ? log.corr : "-"} · 적용 문제 ${log.quiz || "-"}`;
+  return { items, summary };
+}
+
+function buildReport(student) {
+  const { items, summary } = collectItems();
+  const line = "────────────────────────────────────────";
   return [
     "포트폴리오 응용 활동 기록 — 계란을 한 바구니에 담지 마라 (산포도·상관관계 응용)",
-    `저장한 때: ${now.toLocaleString("ko-KR")}`,
-    "학번·이름: ____________________  (제출 전에 직접 쓰세요)",
+    `저장한 때: ${new Date().toLocaleString("ko-KR")}`,
+    `학번: ${student.id || "______"}   이름: ${student.name || "__________"}`,
     "",
-    "요약",
-    `  · 위험 순위 예측 ${hits === null || !revealed ? "-" : `${hits}/4`} · 분산·표준편차 계산 ${c.right}/${c.total}`
-      + ` · 미션 ${missionDone.size}/${MISSIONS.length} · 상관관계 예측 ${log.corr || "-"} · 적용 문제 ${log.quiz || "-"}`,
+    `요약: ${summary}`,
     "",
-    ...blocks,
-    "────────────────────────────────────────",
+    ...items.map((it) => [
+      line, `[${it.no}] ${it.title}`,
+      `  ■ 질문: ${it.question}`, `  ■ 의미: ${it.meaning}`, `  ■ 평가 요소: ${it.assess}`, `  ■ 정답·기준: ${it.key}`,
+      "  ▶ 내 응답", ...it.response.split("\n").map((l) => `     ${l}`),
+    ].join("\n")),
+    line,
   ].join("\n");
 }
 
-$("#save-btn").onclick = () => {
-  const text = buildReport();
+function readStudent() {
+  const idEl = $("#student-id"), nameEl = $("#student-name");
+  const student = { id: idEl.value.trim(), name: nameEl.value.trim() };
+  idEl.classList.toggle("bad", !student.id);
+  nameEl.classList.toggle("bad", !student.name);
+  return student;
+}
+
+function downloadReport(student) {
   const a = document.createElement("a");
-  a.href = URL.createObjectURL(new Blob([text], { type: "text/plain;charset=utf-8" }));
-  a.download = "포트폴리오_응용_활동기록.txt";
+  a.href = URL.createObjectURL(new Blob([buildReport(student)], { type: "text/plain;charset=utf-8" }));
+  a.download = `포트폴리오_응용_활동기록_${student.id || "학번"}_${student.name || "이름"}.txt`;
   a.click();
+}
+
+$("#submit-btn").onclick = async () => {
+  const student = readStudent(), msg = $("#submit-msg"), btn = $("#submit-btn");
+  if (!student.id || !student.name) return say(msg, "학번과 이름을 모두 써 주세요.", false);
+  const codeEl = $("#class-code"), classCode = codeEl.value.trim();
+  codeEl.classList.toggle("bad", !classCode && !!SUBMIT_URL);
+  if (!SUBMIT_URL) {
+    $("#save-btn").hidden = false;
+    return say(msg, "제출 주소가 아직 없어요. 파일로 내려받아 선생님께 내 주세요.", false);
+  }
+  if (!classCode) return say(msg, "칠판에 적힌 수업 코드를 써 주세요.", false);
+  const { items, summary } = collectItems();
+  btn.disabled = true;
+  say(msg, "제출하는 중…");
+  try {
+    // text/plain으로 보내야 브라우저의 사전 확인(CORS preflight) 없이 Apps Script에 바로 전달된다
+    const res = await fetch(SUBMIT_URL, {
+      method: "POST",
+      body: JSON.stringify({ classCode, studentId: student.id, name: student.name, summary, items }),
+    });
+    const out = await res.json();
+    if (out.error === "code") {
+      codeEl.classList.add("bad");
+      return say(msg, "✗ 수업 코드가 틀렸어요. 칠판을 다시 확인해 주세요.", false);
+    }
+    if (!out.ok) throw new Error(out.error || "제출 실패");
+    codeEl.classList.remove("bad");
+    say(msg, `✓ 제출했어요! (${new Date().toLocaleTimeString("ko-KR")}) 고쳐서 다시 내면 새로 추가돼요.`, true);
+  } catch (e) {
+    $("#save-btn").hidden = false;
+    say(msg, "✗ 제출하지 못했어요. 다시 눌러 보거나, 파일로 내려받아 선생님께 내 주세요.", false);
+  } finally {
+    btn.disabled = false;
+  }
 };
+
+$("#save-btn").onclick = () => downloadReport(readStudent());
 
 go(0);
