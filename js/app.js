@@ -63,13 +63,17 @@ $("#all-table").innerHTML = shopTable(entries(RISK_KEYS), "<th>분산</th><th>�
   WEATHER_SHORT);
 $$(".calc-in").forEach((i) => (i.onkeydown = (e) => { if (e.key === "Enter" && !$("#rank-check").disabled) $("#rank-check").click(); }));
 
-// 채점: 빈칸 수와 맞힌 수를 돌려준다
+// 소수 첫째 자리까지 쓴 값이 정답과 같은지
+const calcOk = (k, t, raw) => /^-?\d+(\.\d)?$/.test(raw) && Math.abs(parseFloat(raw) - CALC[k][t]) < 1e-9;
+const calcRaw = (k, t) => $(`.calc-in[data-k="${k}"][data-t="${t}"]`).value.trim().replace(",", ".");
+
+// 채점: 칸마다 ✓/✗를 표시하고 빈칸 수와 맞힌 수를 돌려준다
 function gradeCalc() {
   let blank = 0, right = 0;
   $$(".calc-in").forEach((i) => {
     const raw = i.value.trim().replace(",", "."), mark = i.nextElementSibling;
     if (!raw) { blank++; i.classList.remove("ok", "bad"); mark.textContent = ""; return; }
-    const ok = /^-?\d+(\.\d)?$/.test(raw) && Math.abs(parseFloat(raw) - CALC[i.dataset.k][i.dataset.t]) < 1e-9;
+    const ok = calcOk(i.dataset.k, i.dataset.t, raw);
     right += ok;
     i.classList.toggle("ok", ok); i.classList.toggle("bad", !ok);
     mark.textContent = ok ? "✓" : "✗"; mark.className = `calc-mark ${ok ? "ok" : "no"}`;
@@ -110,7 +114,7 @@ renderRank();
 
 /* ---------- 2. 같은 평균, 다른 위험 ---------- */
 let missionIdx = 0;
-const missionDone = new Set();
+const missionDone = new Set(), missionValues = {}; // 성공했을 때 학생이 만든 수익률
 $("#missions").innerHTML = MISSIONS.map((m, i) =>
   `<label><input type="radio" name="mission" value="${i}" ${i ? "" : "checked"}> 미션 ${i + 1}. ${m.text}</label>`).join("");
 $$("#missions input").forEach((r) => (r.onchange = () => { missionIdx = +r.value; checkMission(); }));
@@ -129,6 +133,7 @@ function checkMission() {
   }
   if (sd >= goal.sdMin && sd <= goal.sdMax) {
     missionDone.add(missionIdx);
+    missionValues[missionIdx] = { vals, sd };
     $$("#missions label")[missionIdx].classList.add("done");
     log.missions = `${missionDone.size}/${MISSIONS.length} 성공`;
     return say($("#mission-msg"), `🎉 미션 ${missionIdx + 1} 성공! (표준편차 ${R(sd)}%)`, true);
@@ -226,27 +231,105 @@ renderRecords();
 $("#apply-table").innerHTML = shopTable([["A", SHOPS.A], ["X", APPLY.shop]]);
 $("#quiz").innerHTML = APPLY.questions.map((item, qi) => `<div class="quiz-item"><p>Q${qi + 1}. ${item.q}</p>
   <div class="choices">${item.options.map((o, oi) => `<button data-q="${qi}" data-o="${oi}">${o}</button>`).join("")}</div></div>`).join("");
-const answers = {};
+const answers = {}, quizChoice = {}; // 맞았는지 / 마지막으로 고른 보기
 $$("#quiz button").forEach((b) => (b.onclick = () => {
   const q = +b.dataset.q, ok = +b.dataset.o === APPLY.questions[q].answer;
   $$(`#quiz button[data-q="${q}"]`).forEach((x) => x.classList.remove("right", "wrong"));
   b.classList.add(ok ? "right" : "wrong");
   answers[q] = ok;
+  quizChoice[q] = +b.dataset.o;
   const score = Object.values(answers).filter(Boolean).length;
   log.quiz = `${score} / ${APPLY.questions.length}`;
   say($("#quiz-score"), `맞힌 문제: ${log.quiz}`, score === APPLY.questions.length ? true : undefined);
 }));
 
-$("#save-btn").onclick = () => {
-  const text = [
-    `[0. 첫 판단] ${log.vote || "-"}`, `    근거: ${$("#vote-reason").value}`,
-    `[1. 위험 순위 예측] ${log.rank || "-"}`, `    분산·표준편차 계산: ${log.calc || "-"}`, `    생각 넓히기: ${$("#reflect-1").value}`,
-    `[2. 나만의 가게 미션] ${log.missions || "0/3 성공"}`, `    규칙 찾기: ${$("#reflect-2").value}`,
-    `[3. 상관관계 예측] ${log.corr || "-"}`, `    최고의 짝꿍 예측: ${log.best || "-"} / 이유: ${$("#reflect-3").value}`,
-    `[4. 최고의 바구니] ${log.best4 || "-"}`, `    모둠 결론: ${$("#mission").value}`,
-    `[5. 적용 문제] ${log.quiz || "-"}`, `    한계 토론: ${$("#limit").value}`,
-    `[출구 카드] ${$("#exit-card").value}`,
+/* ---------- 활동 기록 내려받기 ---------- */
+// 문항마다 질문·의미·평가 요소·정답(기준)과 학생 응답을 함께 적어, 교사가 파일만 보고도 알아볼 수 있게 한다
+const NONE = "(응답 없음)";
+const val = (sel) => $(sel).value.trim() || NONE;
+const pctList = (xs) => xs.map(pct).join(", ");
+
+function reportBlock(meta, responseLines) {
+  return [
+    "────────────────────────────────────────",
+    `[${meta.no}] ${meta.title}`,
+    `  ■ 질문: ${meta.question}`,
+    `  ■ 의미: ${meta.meaning}`,
+    `  ■ 평가 요소: ${meta.assess}`,
+    `  ■ 정답·기준: ${meta.key}`,
+    "  ▶ 내 응답",
+    ...responseLines.map((l) => `     ${l}`),
   ].join("\n");
+}
+
+function buildReport() {
+  const blocks = [];
+  blocks.push(reportBlock(REPORT.vote, [`선택: ${log.vote || NONE}`, `근거: ${val("#vote-reason")}`]));
+
+  const hits = ranking.length === RISK_KEYS.length ? ranking.filter((k, i) => k === RISK_ORDER[i]).length : null;
+  blocks.push(reportBlock(REPORT.rank, ranking.length
+    ? [`내 순위: ${ranking.map((k, i) => `${i + 1}위 ${SHOPS[k].name}`).join(" > ")}`,
+       revealed ? `결과: ${hits}/4곳 일치` : "결과: 아직 확인하지 않음"]
+    : [NONE]));
+
+  const c = { right: 0, total: RISK_KEYS.length * 2 };
+  const calcLines = RISK_KEYS.map((k) => {
+    const cell = (t) => {
+      const v = calcRaw(k, t);
+      if (!v) return `${CALC_NAME[t]} (빈칸)`;
+      const ok = calcOk(k, t, v);
+      c.right += ok;
+      return `${CALC_NAME[t]} ${v} ${ok ? "✓" : `✗(정답 ${CALC[k][t].toFixed(1)})`}`;
+    };
+    return `${SHOPS[k].emoji} ${SHOPS[k].name}: ${cell("v")}, ${cell("s")}`;
+  });
+  blocks.push(reportBlock(REPORT.calc, [...calcLines, `결과: ${c.right}/${c.total}칸 정답`]));
+  blocks.push(reportBlock(REPORT.reflect1, [val("#reflect-1")]));
+
+  blocks.push(reportBlock(REPORT.missions, MISSIONS.map((m, i) => missionValues[i]
+    ? `미션 ${i + 1} ✓ 성공 — 무더운 해 ${pct(missionValues[i].vals[0])}, 보통인 해 ${pct(missionValues[i].vals[1])}, 비가 많은 해 ${pct(missionValues[i].vals[2])} (표준편차 ${R(missionValues[i].sd)}%)`
+    : `미션 ${i + 1} 미완료 (${m.text})`).concat(`결과: ${missionDone.size}/${MISSIONS.length} 성공`)));
+  blocks.push(reportBlock(REPORT.reflect2, [val("#reflect-2")]));
+
+  blocks.push(reportBlock(REPORT.corr, $$("#partner-table select").map((s) => {
+    const k = s.dataset.k, mine = s.value ? CORR_LABEL[s.value] : "(선택 안 함)";
+    return `${SHOPS[k].emoji} ${SHOPS[k].name}: ${mine}${s.value ? (s.value === corrType(k) ? " ✓" : ` ✗(정답 ${CORR_LABEL[corrType(k)]})`) : ""}`;
+  }).concat(corrChecked ? [`결과: ${log.corr}`] : ["결과: 아직 확인하지 않음"])));
+  blocks.push(reportBlock(REPORT.best, [`예측: ${log.best || NONE}`, `이유: ${val("#reflect-3")}`]));
+
+  blocks.push(reportBlock(REPORT.basket, records.length
+    ? records.map((r) => `🍦 ${r.wA}% + ${SHOPS[r.k].name} ${100 - r.wA}% → 평균 ${R(r.mean)}%, 표준편차 ${R(r.sd)}% ${r.ok ? "(조건 만족)" : "(평균 3% 미만)"}`)
+        .concat(`내가 찾은 최고의 바구니: ${log.best4 || "-"}`)
+    : ["기록한 바구니 없음"]));
+  blocks.push(reportBlock(REPORT.conclusion, [val("#mission")]));
+
+  APPLY.questions.forEach((item, qi) => {
+    const pick = quizChoice[qi];
+    blocks.push(reportBlock({
+      no: `5-${"①②③④"[qi]}`, title: "적용 문제", question: item.q, meaning: item.meaning, assess: item.assess,
+      key: item.options[item.answer],
+    }, [pick === undefined ? NONE : `선택: ${item.options[pick]} ${pick === item.answer ? "✓" : "✗"}`]));
+  });
+  blocks.push(reportBlock(REPORT.limit, [val("#limit")]));
+  blocks.push(reportBlock(REPORT.exit, [val("#exit-card")]));
+
+  const now = new Date();
+  return [
+    "포트폴리오 응용 활동 기록 — 계란을 한 바구니에 담지 마라 (산포도·상관관계 응용)",
+    `저장한 때: ${now.toLocaleString("ko-KR")}`,
+    "학번·이름: ____________________  (제출 전에 직접 쓰세요)",
+    "",
+    "요약",
+    `  · 위험 순위 예측 ${hits === null || !revealed ? "-" : `${hits}/4`} · 분산·표준편차 계산 ${c.right}/${c.total}`
+      + ` · 미션 ${missionDone.size}/${MISSIONS.length} · 상관관계 예측 ${log.corr || "-"} · 적용 문제 ${log.quiz || "-"}`,
+    "",
+    ...blocks,
+    "────────────────────────────────────────",
+  ].join("\n");
+}
+
+$("#save-btn").onclick = () => {
+  const text = buildReport();
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([text], { type: "text/plain;charset=utf-8" }));
   a.download = "포트폴리오_응용_활동기록.txt";
