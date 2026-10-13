@@ -53,7 +53,29 @@ $$("#vote button").forEach((b) => (b.onclick = () => {
 
 /* ---------- 1. 위험 진단 ---------- */
 const RISK_KEYS = ["A", "B", "C", "D"];
-$("#all-table").innerHTML = shopTable(entries(RISK_KEYS));
+// 학생이 직접 계산해 적는 분산(v)·표준편차(s) — 소수 첫째 자리까지 반올림한 값이 정답
+const CALC = Object.fromEntries(RISK_KEYS.map((k) =>
+  [k, { v: R(Stats.variance(SHOPS[k].returns)), s: R(Stats.sd(SHOPS[k].returns)) }]));
+const CALC_NAME = { v: "분산", s: "표준편차" };
+$("#all-table").innerHTML = shopTable(entries(RISK_KEYS), "<th>분산</th><th>표준편차</th>", (k, s) =>
+  ["v", "s"].map((t) => `<td class="calc"><input class="calc-in" type="text" inputmode="decimal" autocomplete="off"
+    data-k="${k}" data-t="${t}" aria-label="${s.name} ${CALC_NAME[t]}"><span class="calc-mark" aria-hidden="true"></span></td>`).join(""),
+  WEATHER_SHORT);
+$$(".calc-in").forEach((i) => (i.onkeydown = (e) => { if (e.key === "Enter" && !$("#rank-check").disabled) $("#rank-check").click(); }));
+
+// 채점: 빈칸 수와 맞힌 수를 돌려준다
+function gradeCalc() {
+  let blank = 0, right = 0;
+  $$(".calc-in").forEach((i) => {
+    const raw = i.value.trim().replace(",", "."), mark = i.nextElementSibling;
+    if (!raw) { blank++; i.classList.remove("ok", "bad"); mark.textContent = ""; return; }
+    const ok = /^-?\d+(\.\d)?$/.test(raw) && Math.abs(parseFloat(raw) - CALC[i.dataset.k][i.dataset.t]) < 1e-9;
+    right += ok;
+    i.classList.toggle("ok", ok); i.classList.toggle("bad", !ok);
+    mark.textContent = ok ? "✓" : "✗"; mark.className = `calc-mark ${ok ? "ok" : "no"}`;
+  });
+  return { blank, right, total: $$(".calc-in").length };
+}
 let ranking = [], revealed = false;
 const RISK_ORDER = [...RISK_KEYS].sort((a, b) => Stats.sd(SHOPS[b].returns) - Stats.sd(SHOPS[a].returns));
 renderers[1] = () => (revealed ? Charts.sdBars($("#sd-bars"), RISK_ORDER) : Charts.prep($("#sd-bars")));
@@ -67,15 +89,22 @@ function renderRank() {
 }
 $("#rank-reset").onclick = () => { ranking = []; renderRank(); };
 $("#rank-check").onclick = () => {
+  const c = gradeCalc();
+  if (c.blank) {
+    return say($("#rank-msg"), `표의 분산·표준편차 칸을 모두 채워야 확인할 수 있어요. (빈칸 ${c.blank}개)`, false);
+  }
   const hits = ranking.filter((k, i) => k === RISK_ORDER[i]).length;
   revealed = true;
   $("#sd-placeholder").hidden = true;
   $("#rank-reflect").hidden = false;
   renderers[1]();
   log.rank = `${ranking.map((k) => SHOPS[k].name).join(" > ")} (${hits}/4 일치)`;
-  say($("#rank-msg"), hits === 4
-    ? "🎉 4곳 모두 맞혔어요! 수익률이 평균에서 멀리 흩어진 가게일수록 표준편차가 커요."
-    : `${hits}곳 맞혔어요. 순위가 다른 가게는 수익률이 평균에서 얼마나 떨어져 있는지 다시 비교해 보세요.`, hits === 4);
+  log.calc = `${c.right}/${c.total} 정답 — ` + RISK_KEYS.map((k) =>
+    `${SHOPS[k].name} 분산 ${$(`.calc-in[data-k="${k}"][data-t="v"]`).value}, 표준편차 ${$(`.calc-in[data-k="${k}"][data-t="s"]`).value}`).join(" / ");
+  const rankText = hits === 4 ? "🎉 순위 4곳 모두 맞혔어요!" : `순위 ${hits}곳 맞혔어요.`;
+  const calcText = c.right === c.total ? "계산도 모두 정답! 흩어짐이 클수록 표준편차가 커요."
+    : `계산 ${c.right}/${c.total}칸 정답 — ✗ 칸을 고쳐 다시 확인하세요.`;
+  say($("#rank-msg"), `${rankText} ${calcText}`, hits === 4 && c.right === c.total);
 };
 renderRank();
 
@@ -86,8 +115,8 @@ $("#missions").innerHTML = MISSIONS.map((m, i) =>
   `<label><input type="radio" name="mission" value="${i}" ${i ? "" : "checked"}> 미션 ${i + 1}. ${m.text}</label>`).join("");
 $$("#missions input").forEach((r) => (r.onchange = () => { missionIdx = +r.value; checkMission(); }));
 $("#my-inputs").innerHTML = WEATHER.map((w, i) =>
-  `<label>${w}<input class="num" type="number" step="1" value="${[10, 5, 0][i]}" aria-label="${w} 수익률(%)"></label>`).join("") +
-  `<label>&nbsp;<span class="note" style="display:block;margin-top:10px">단위: %</span></label>`;
+  `<label>${w}에는<span class="unit-input"><input class="num" type="number" step="1" value="${[10, 5, 0][i]}"
+    aria-label="${w}에 우리 가게 수익률(%)">%</span></label>`).join("");
 $$("#my-inputs input").forEach((inp) => (inp.oninput = checkMission));
 
 function checkMission() {
@@ -211,7 +240,7 @@ $$("#quiz button").forEach((b) => (b.onclick = () => {
 $("#save-btn").onclick = () => {
   const text = [
     `[0. 첫 판단] ${log.vote || "-"}`, `    근거: ${$("#vote-reason").value}`,
-    `[1. 위험 순위 예측] ${log.rank || "-"}`, `    생각 넓히기: ${$("#reflect-1").value}`,
+    `[1. 위험 순위 예측] ${log.rank || "-"}`, `    분산·표준편차 계산: ${log.calc || "-"}`, `    생각 넓히기: ${$("#reflect-1").value}`,
     `[2. 나만의 가게 미션] ${log.missions || "0/3 성공"}`, `    규칙 찾기: ${$("#reflect-2").value}`,
     `[3. 상관관계 예측] ${log.corr || "-"}`, `    최고의 짝꿍 예측: ${log.best || "-"} / 이유: ${$("#reflect-3").value}`,
     `[4. 최고의 바구니] ${log.best4 || "-"}`, `    모둠 결론: ${$("#mission").value}`,
