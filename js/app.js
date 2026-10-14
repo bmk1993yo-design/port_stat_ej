@@ -53,36 +53,41 @@ $$("#vote button").forEach((b) => (b.onclick = () => {
 
 /* ---------- 1. 위험 진단 ---------- */
 const RISK_KEYS = ["A", "B", "C", "D"];
-// 학생은 분산만 계산해 적고(소수 첫째 자리까지 반올림한 값이 정답), 표준편차는 그 분산의 제곱근을 앱이 바로 보여 준다
-const CALC = Object.fromEntries(RISK_KEYS.map((k) => [k, R(Stats.variance(SHOPS[k].returns))]));
-$("#all-table").innerHTML = shopTable(entries(RISK_KEYS), "<th>분산</th><th>표준편차<br><small>(자동)</small></th>", (k, s) =>
-  `<td class="calc"><input class="calc-in" type="text" inputmode="decimal" autocomplete="off"
-    data-k="${k}" aria-label="${s.name} 분산"><span class="calc-mark" aria-hidden="true"></span></td>
-   <td class="calc-auto"><output data-k="${k}" aria-label="${s.name} 표준편차(자동 계산)">—</output></td>`,
+// 학생은 평균(m)과 분산(v)을 계산해 적고(소수 첫째 자리까지 반올림한 값이 정답),
+// 표준편차는 학생이 쓴 분산의 제곱근을 앱이 바로 보여 준다
+const CALC = Object.fromEntries(RISK_KEYS.map((k) =>
+  [k, { m: R(Stats.mean(SHOPS[k].returns)), v: R(Stats.variance(SHOPS[k].returns)) }]));
+const CALC_NAME = { m: "평균", v: "분산" };
+const calcCell = (k, s, t) => `<td class="calc"><input class="calc-in calc-${t}" type="text" inputmode="decimal" autocomplete="off"
+    data-k="${k}" data-t="${t}" aria-label="${s.name} ${CALC_NAME[t]}"><span class="calc-mark" aria-hidden="true"></span></td>`;
+$("#all-table").innerHTML = shopTable(entries(RISK_KEYS), "<th>평균</th><th>분산</th><th>표준편차<br><small>(자동)</small></th>", (k, s) =>
+  calcCell(k, s, "m") + calcCell(k, s, "v") +
+  `<td class="calc-auto"><output data-k="${k}" aria-label="${s.name} 표준편차(자동 계산)">—</output></td>`,
   WEATHER_SHORT);
 
-const calcRaw = (k) => $(`.calc-in[data-k="${k}"]`).value.trim().replace(",", ".");
-const isNum = (raw) => /^\d+(\.\d+)?$/.test(raw);
-// 소수 첫째 자리까지 쓴 분산이 정답과 같은지
-const calcOk = (k, raw) => /^\d+(\.\d)?$/.test(raw) && Math.abs(parseFloat(raw) - CALC[k]) < 1e-9;
+const calcRaw = (k, t) => $(`.calc-in[data-k="${k}"][data-t="${t}"]`).value.trim().replace(",", ".").replace("−", "-");
+// 소수 첫째 자리까지 쓴 값이 정답과 같은지
+const calcOk = (k, t, raw) => /^-?\d+(\.\d)?$/.test(raw) && Math.abs(parseFloat(raw) - CALC[k][t]) < 1e-9;
 // 학생이 쓴 분산으로 구한 표준편차(소수 첫째 자리), 숫자가 아니면 null
-const autoSd = (raw) => (isNum(raw) ? R(Math.sqrt(parseFloat(raw))) : null);
+const autoSd = (raw) => (/^\d+(\.\d+)?$/.test(raw) ? R(Math.sqrt(parseFloat(raw))) : null);
 
 $$(".calc-in").forEach((i) => {
-  i.oninput = () => {
-    const sd = autoSd(calcRaw(i.dataset.k));
-    $(`.calc-auto output[data-k="${i.dataset.k}"]`).textContent = sd === null ? "—" : sd.toFixed(1);
-  };
+  if (i.dataset.t === "v") {
+    i.oninput = () => {
+      const sd = autoSd(calcRaw(i.dataset.k, "v"));
+      $(`.calc-auto output[data-k="${i.dataset.k}"]`).textContent = sd === null ? "—" : sd.toFixed(1);
+    };
+  }
   i.onkeydown = (e) => { if (e.key === "Enter" && !$("#rank-check").disabled) $("#rank-check").click(); };
 });
 
-// 채점: 분산 칸마다 ✓/✗를 표시하고 빈칸 수와 맞힌 수를 돌려준다
+// 채점: 평균·분산 칸마다 ✓/✗를 표시하고 빈칸 수와 맞힌 수를 돌려준다
 function gradeCalc() {
   let blank = 0, right = 0;
   $$(".calc-in").forEach((i) => {
-    const raw = calcRaw(i.dataset.k), mark = i.nextElementSibling;
+    const raw = calcRaw(i.dataset.k, i.dataset.t), mark = i.nextElementSibling;
     if (!raw) { blank++; i.classList.remove("ok", "bad"); mark.textContent = ""; return; }
-    const ok = calcOk(i.dataset.k, raw);
+    const ok = calcOk(i.dataset.k, i.dataset.t, raw);
     right += ok;
     i.classList.toggle("ok", ok); i.classList.toggle("bad", !ok);
     mark.textContent = ok ? "✓" : "✗"; mark.className = `calc-mark ${ok ? "ok" : "no"}`;
@@ -104,7 +109,7 @@ $("#rank-reset").onclick = () => { ranking = []; renderRank(); };
 $("#rank-check").onclick = () => {
   const c = gradeCalc();
   if (c.blank) {
-    return say($("#rank-msg"), `표의 분산 칸을 모두 채워야 확인할 수 있어요. (빈칸 ${c.blank}개)`, false);
+    return say($("#rank-msg"), `표의 평균·분산 칸을 모두 채워야 확인할 수 있어요. (빈칸 ${c.blank}개)`, false);
   }
   const hits = ranking.filter((k, i) => k === RISK_ORDER[i]).length;
   revealed = true;
@@ -113,10 +118,10 @@ $("#rank-check").onclick = () => {
   renderers[1]();
   log.rank = `${ranking.map((k) => SHOPS[k].name).join(" > ")} (${hits}/4 일치)`;
   log.calc = `${c.right}/${c.total} 정답 — ` + RISK_KEYS.map((k) =>
-    `${SHOPS[k].name} 분산 ${calcRaw(k)}`).join(" / ");
+    `${SHOPS[k].name} 평균 ${calcRaw(k, "m")}, 분산 ${calcRaw(k, "v")}`).join(" / ");
   const rankText = hits === 4 ? "🎉 순위 4곳 모두 맞혔어요!" : `순위 ${hits}곳 맞혔어요.`;
   const calcText = c.right === c.total ? "계산도 모두 정답! 흩어짐이 클수록 표준편차가 커요."
-    : `분산 ${c.right}/${c.total}칸 정답 — ✗ 칸을 고쳐 다시 확인하세요.`;
+    : `계산 ${c.right}/${c.total}칸 정답 — ✗ 칸을 고쳐 다시 확인하세요.`;
   say($("#rank-msg"), `${rankText} ${calcText}`, hits === 4 && c.right === c.total);
 };
 renderRank();
@@ -270,15 +275,19 @@ function collectItems() {
        revealed ? `결과: ${hits}/4곳 일치` : "결과: 아직 확인하지 않음"]
     : [NONE]);
 
-  const c = { right: 0, total: RISK_KEYS.length };
+  const c = { right: 0, total: RISK_KEYS.length * 2 };
   const calcLines = RISK_KEYS.map((k) => {
-    const v = calcRaw(k), name = `${SHOPS[k].emoji} ${SHOPS[k].name}`;
-    if (!v) return `${name}: 분산 (빈칸)`;
-    const ok = calcOk(k, v), sd = autoSd(v);
-    c.right += ok;
-    return `${name}: 분산 ${v} ${ok ? "✓" : `✗(정답 ${CALC[k].toFixed(1)})`} → 표준편차(자동) ${sd === null ? "-" : sd.toFixed(1)}`;
+    const cell = (t) => {
+      const raw = calcRaw(k, t);
+      if (!raw) return `${CALC_NAME[t]} (빈칸)`;
+      const ok = calcOk(k, t, raw);
+      c.right += ok;
+      return `${CALC_NAME[t]} ${raw} ${ok ? "✓" : `✗(정답 ${CALC[k][t]})`}`;
+    };
+    const sd = autoSd(calcRaw(k, "v"));
+    return `${SHOPS[k].emoji} ${SHOPS[k].name}: ${cell("m")}, ${cell("v")} → 표준편차(자동) ${sd === null ? "-" : sd.toFixed(1)}`;
   });
-  add(REPORT.calc, [...calcLines, `결과: 분산 ${c.right}/${c.total}칸 정답`]);
+  add(REPORT.calc, [...calcLines, `결과: ${c.right}/${c.total}칸 정답`]);
   add(REPORT.reflect1, [val("#reflect-1")]);
 
   add(REPORT.missions, MISSIONS.map((m, i) => missionValues[i]
@@ -307,7 +316,7 @@ function collectItems() {
   add(REPORT.limit, [val("#limit")]);
   add(REPORT.exit, [val("#exit-card")]);
 
-  const summary = `위험 순위 예측 ${hits === null || !revealed ? "-" : `${hits}/4`} · 분산 계산 ${c.right}/${c.total}`
+  const summary = `위험 순위 예측 ${hits === null || !revealed ? "-" : `${hits}/4`} · 평균·분산 계산 ${c.right}/${c.total}`
     + ` · 미션 ${missionDone.size}/${MISSIONS.length} · 상관관계 예측 ${corrChecked ? log.corr : "-"} · 적용 문제 ${log.quiz || "-"}`;
   return { items, summary };
 }

@@ -57,7 +57,7 @@
             <div class="choices compact" id="rank-pick"></div>
             <ol class="rank" id="rank-list"></ol>
           </div>
-          <p class="calc-guide"><b>② 계산</b> — 각 가게의 <b>분산</b>을 <b>소수 첫째 자리까지</b>(둘째 자리에서 반올림) 쓰세요. 표준편차(√분산)는 자동으로 나와요.</p>
+          <p class="calc-guide"><b>② 계산</b> — 각 가게의 <b>평균</b>과 <b>분산</b>을 <b>소수 첫째 자리까지</b>(둘째 자리에서 반올림) 쓰세요. 표준편차(√분산)는 자동으로 나와요.</p>
           <div class="table-wrap"><table class="data tight" id="all-table"></table></div>
           <div class="btn-row">
             <button class="primary" id="rank-check" disabled>③ 확인하기</button>
@@ -80,8 +80,8 @@
           </div>
           <p class="feedback" id="rank-msg" aria-live="polite"></p>
           <div class="task" id="rank-reflect" hidden>
-            <label for="reflect-1"><b>생각 넓히기</b> — 평균 수익률이 높은 가게일수록 위험도 클까요? 표에서 근거를 찾아 쓰세요.</label>
-            <textarea id="reflect-1"></textarea>
+            <label for="reflect-1"><b>생각 넓히기</b> — 4개 가게 중 투자하기에 <b>위험이 가장 큰 가게</b>는 어디인가요? <b>'표준편차'</b>라는 말을 써서 이유를 설명하세요.</label>
+            <textarea id="reflect-1" placeholder="위험이 가장 큰 가게는 ○○이다. 왜냐하면 표준편차가 …"></textarea>
           </div>
         </div>
       </div>
